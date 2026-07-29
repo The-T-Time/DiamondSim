@@ -1,0 +1,44 @@
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ── Virtual environments ────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── Packaging / build ────────────────────────────────────────────────────
+build/
+dist/
+*.egg-info/
+*.egg
+
+# ── Testing / coverage ───────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── IDE / editor ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── OS cruft ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── DiamondSim runtime data ──────────────────────────────────────────────
+# App logs (utils/logger.py)
+/logs/
+
+# Saved runs (data/results_store.py)
+/saved_results/
+
+# Fetched-data cache (data/cache.py) — schedule/Elo cache and the generic
+# roster/player-stats/hitting-stats cache all write JSON directly to the
+# project root; none of it is meant to be committed.
+/*.json

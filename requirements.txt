@@ -1,0 +1,17 @@
+# DiamondSim — Python dependencies
+# Install with: pip install -r requirements.txt
+#
+# tkinter is NOT listed here — it ships with Python on Windows and macOS.
+# On Linux: sudo apt install python3-tk  (Debian/Ubuntu)
+#           sudo dnf install python3-tkinter  (Fedora/RHEL)
+#
+# Fonts: the app requests "Oswald" (headers/big text) and "Inter" (body/
+# small text) by family name — install both system-wide for them to render
+# as intended (both are free Google Fonts); otherwise Tk silently falls
+# back to a default font.
+
+requests>=2.28.0
+matplotlib>=3.6.0
+seaborn>=0.12.0
+customtkinter>=5.2.0
+tkinter-tooltip>=3.1.0
