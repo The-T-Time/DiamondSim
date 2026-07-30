@@ -5,14 +5,20 @@
 # Fetches a team's full 40-man roster (every position) from the MLB Stats
 # API and parses it into a Roster of Player objects — no stats or rating
 # math, just who's on the roster and available right now. Short-TTL disk
-# cached, same pattern as data/player_stats.py.
+# cached in the unified cache/rosters.json store (every team in one file,
+# each entry with its own freshness timestamp) — see data/cache_store.py.
+#
+# Unavailable players (injured/optioned/restricted) are also mirrored into
+# cache/injuries.json as a side effect of parsing, so "who's hurt right
+# now" has its own dedicated file instead of requiring a scan of every
+# team's full roster.
 # ==============================================================================
 
 from __future__ import annotations
 
 from config import ROSTER_CACHE_EXPIRY_SECONDS
 from data.api import fetch_full_roster_raw
-from data.cache import load_json_cache, save_json_cache
+from data.cache_store import get_entry, save_team_injuries, set_entry
 from data.exceptions import DataFetchError
 from models.player import Player
 from models.roster import Roster
@@ -41,7 +47,7 @@ def _parse_player(entry: dict) -> Player | None:
 
 
 def _cache_key(team_id: int, season: int) -> str:
-    return f"mlb_full_roster_cache_{team_id}_{season}"
+    return f"{team_id}:{season}"
 
 
 #------------------------------------------------------------------------------
@@ -57,10 +63,10 @@ def fetch_team_roster(team: TeamName, team_id: int, season: int) -> Roster:
     screen over one missing roster.
     """
     cache_key = _cache_key(team_id, season)
-    payload = load_json_cache(cache_key, ROSTER_CACHE_EXPIRY_SECONDS)
+    payload = get_entry('rosters', cache_key, ROSTER_CACHE_EXPIRY_SECONDS)
     if payload is None:
         payload = fetch_full_roster_raw(team_id, season)
-        save_json_cache(cache_key, payload)
+        set_entry('rosters', cache_key, payload)
 
     entries = payload.get('roster')
     if not isinstance(entries, list):
@@ -75,5 +81,14 @@ def fetch_team_roster(team: TeamName, team_id: int, season: int) -> Roster:
             continue
         if player is not None:
             players.append(player)
+
+    unavailable = [
+        {
+            'person_id': p.person_id, 'full_name': p.full_name, 'position': p.position,
+            'status_code': p.status_code, 'status_description': p.status_description,
+        }
+        for p in players if not p.is_available
+    ]
+    save_team_injuries(team_id, season, unavailable)
 
     return Roster(team=team, players=tuple(players))

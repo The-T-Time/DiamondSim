@@ -21,8 +21,12 @@ from datetime import date
 from typing import Any, Callable
 
 from data.teams import ALL_TEAMS
-from data.api import fetch_schedule, parse_schedule_into_games
-from data.cache import load_cache, save_cache
+from data.cache_store import (
+    save_current_elo,
+    save_standings,
+    split_games_for_backtest,
+    sync_season_games,
+)
 from models.elo_snapshot import EloSnapshot
 from models.game import Game
 from models.playoff_bracket import PlayoffBracketResult
@@ -93,40 +97,52 @@ def _replay_with_elo_log(
 #==============================================================================
 
 def fetch_simulation_data(season: int, cfg: SimulationConfig = SimulationConfig()) -> dict[str, Any]:
-    """Loads or builds the data payload for forward simulation."""
-    cached = load_cache(season, cfg)
-    if cached is not None:
-        return cached
-
-    logger.info("Cache missing/expired — pulling fresh data for %d...", season)
+    """
+    Loads the data payload for forward simulation. Game/schedule data
+    comes from the incremental cache (data/cache_store.py) — only dates
+    since the last sync are actually fetched from the API; a second call
+    the same day is served entirely from disk. Elo/standings are cheap to
+    recompute locally from that (mostly-cached) game list, so they're
+    always rebuilt fresh in-process rather than trusted from an older
+    snapshot, then persisted into the cache's team_elo.json/standings.json
+    entries for reference.
+    """
     starting_elo = compute_regressed_starting_elo(season, cfg)
-    schedule_data = fetch_schedule(season)
-    played_games, unplayed_games = parse_schedule_into_games(schedule_data)
+    played_games, unplayed_games = sync_season_games(season)
     current_elo, live_standings, elo_log = _replay_with_elo_log(played_games, starting_elo, cfg)
 
-    payload = {
+    save_standings(season, cfg, live_standings)
+    save_current_elo(season, cfg, current_elo, elo_log)
+
+    return {
         'live_standings':   live_standings,
         'derived_base_elo': current_elo,
         'played_games':     played_games,
         'unplayed_games':   unplayed_games,
         'elo_log':          elo_log,
     }
-    save_cache(season, payload, cfg)
-    return payload
 
 
 def fetch_backtest_data(
     season: int, snapshot_date: str, cfg: SimulationConfig = SimulationConfig()
 ) -> dict[str, Any]:
-    """Builds the data payload for backtesting. No caching — always fresh."""
+    """
+    Builds the data payload for backtesting. A backtest season is
+    historical, so once the cache has fully synced it (every date through
+    the season's end already fetched), re-running the same or a
+    different backtest snapshot date costs zero API calls — the
+    played/unplayed split for any snapshot date is re-derived locally
+    from the cached, already-parsed games instead of re-fetching and
+    re-parsing raw schedule data every time.
+    """
     logger.info("Building backtest snapshot: %d season as of %s...", season, snapshot_date)
     starting_elo = compute_regressed_starting_elo(season, cfg)
-    full_schedule = fetch_schedule(season)
-    played_games, unplayed_games = parse_schedule_into_games(
-        full_schedule, backtest_date=snapshot_date
+    cached_played, cached_unplayed = sync_season_games(season)
+    played_games, unplayed_games = split_games_for_backtest(
+        cached_played + cached_unplayed, snapshot_date
     )
     current_elo, live_standings, elo_log = _replay_with_elo_log(played_games, starting_elo, cfg)
-    full_played, _ = parse_schedule_into_games(full_schedule, backtest_date=None)
+    full_played = cached_played
 
     return {
         'live_standings':     live_standings,

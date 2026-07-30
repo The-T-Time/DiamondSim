@@ -71,6 +71,21 @@ def fetch_schedule(season: int, end_date_override: str | None = None) -> dict:
     return _get_json(url, f"the {season} schedule")
 
 
+def fetch_schedule_range(start_date: str, end_date: str) -> dict:
+    """
+    Fetches the regular-season schedule for an explicit date window (both
+    'YYYY-MM-DD', inclusive) — no season-boundary lookup involved. Used by
+    the incremental disk cache (data/cache_store.py) to pull only the
+    dates that have elapsed since the last sync instead of re-fetching a
+    whole season's schedule on every run.
+    """
+    url = (
+        f"https://statsapi.mlb.com/api/v1/schedule"
+        f"?sportId=1&startDate={start_date}&endDate={end_date}"
+    )
+    return _get_json(url, f"the schedule from {start_date} to {end_date}")
+
+
 def fetch_full_roster_raw(team_id: int, season: int) -> dict:
     """
     Fetches `team_id`'s full 40-man roster for `season`, no stats hydrate —

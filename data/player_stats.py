@@ -21,7 +21,7 @@ from data.api import (
     fetch_people_last_30_days_stats_raw,
     fetch_team_roster_raw,
 )
-from data.cache import load_json_cache, save_json_cache
+from data.cache_store import get_entry, set_entry
 from data.exceptions import DataFetchError
 from models.pitching_stats import RawPlayerRecord, SeasonPitchingLine
 from utils.logger import get_logger
@@ -131,14 +131,17 @@ def _parse_roster_entry(entry: dict, season: int) -> RawPlayerRecord | None:
 #------------------------------------------------------------------------------
 #Disk cache — short TTL, separate entry per team+season+as-of-date (roster/
 #injury status and the last-30-days window both change far more often than
-#the Elo numbers data/cache.py's load_cache/save_cache handle). Uses
-#data/cache.py's generic load_json_cache/save_json_cache rather than a
-#local reimplementation — data/hitting_stats.py and data/roster.py cache
-#the same shape of thing and share this same implementation.
+#the Elo numbers cached elsewhere). Lives in the unified cache/
+#pitching_stats.json store (data/cache_store.py) — every team's entry in
+#one file instead of one file per team, each entry still tracking its own
+#freshness independently.
 #------------------------------------------------------------------------------
 
+_STORE = 'pitching_stats'
+
+
 def _cache_key(team_id: int, season: int, as_of_date: str) -> str:
-    return f"mlb_roster_cache_{team_id}_{season}_{as_of_date}"
+    return f"{team_id}:{season}:{as_of_date}"
 
 
 #------------------------------------------------------------------------------
@@ -164,7 +167,7 @@ def fetch_team_pitching_staff(team_id: int, season: int, as_of_date: str) -> lis
     entire simulation run.
     """
     cache_key = _cache_key(team_id, season, as_of_date)
-    cached = load_json_cache(cache_key, ROSTER_CACHE_EXPIRY_SECONDS)
+    cached = get_entry(_STORE, cache_key, ROSTER_CACHE_EXPIRY_SECONDS)
     if cached is not None:
         roster_payload, last30_payload, career_payload = (
             cached['roster'], cached['last30'], cached['career'],
@@ -189,8 +192,8 @@ def fetch_team_pitching_staff(team_id: int, season: int, as_of_date: str) -> lis
         )
         career_payload = fetch_people_career_stats_raw(pitcher_ids) if pitcher_ids else {'people': []}
 
-        save_json_cache(
-            cache_key,
+        set_entry(
+            _STORE, cache_key,
             {'roster': roster_payload, 'last30': last30_payload, 'career': career_payload},
         )
 

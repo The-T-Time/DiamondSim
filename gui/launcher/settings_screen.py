@@ -16,6 +16,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from config import APP_NAME, APP_VERSION
+from data.cache_store import refresh_all_data
 from data.settings_store import load_settings, reset_to_default, save_settings
 from models.app_settings import AppSettings
 from gui.widgets import (
@@ -153,6 +154,41 @@ class _AdvancedSection:
             self.body.pack_forget()
 
 
+def _data_section(parent: tk.Widget) -> None:
+    _section_title(parent, 'Data')
+    ctk.CTkLabel(
+        parent, font=FONT_SMALL, text_color=C_GRAY, anchor='w', justify='left', wraplength=470,
+        text=('Game, roster, and stat data is cached locally after the first run so '
+              'later launches only pull whatever\u2019s new. Use this if you suspect the '
+              'cache is stale or corrupted \u2014 it clears everything cached and '
+              'rebuilds it from scratch on your next Simulate or Backtest run.'),
+    ).pack(fill='x', padx=4, pady=(0, 8))
+
+    def _on_refresh() -> None:
+        if not messagebox.askyesno(
+            'Refresh Data',
+            'This clears all cached MLB data (games, rosters, stats, ratings). '
+            'Everything will be re-downloaded the next time you run a simulation '
+            'or backtest. Continue?',
+        ):
+            return
+        try:
+            refresh_all_data()
+        except Exception as e:   #cache I/O should never be able to crash the app
+            messagebox.showerror('Refresh Data', f"Couldn't refresh the cache: {e}")
+            return
+        messagebox.showinfo(
+            'Refresh Data',
+            'Cache cleared. Fresh data will be downloaded the next time you run '
+            'a simulation or backtest.',
+        )
+
+    ctk.CTkButton(
+        parent, text='\U0001f504  Refresh Data', font=FONT_NORMAL_BOLD,
+        fg_color=C_ORANGE, hover_color=C_HEADER_BAR, command=_on_refresh,
+    ).pack(anchor='w', padx=4, pady=(0, 10))
+
+
 def _about_section(parent: tk.Widget) -> None:
     _section_title(parent, 'About')
 
@@ -270,6 +306,9 @@ class SettingsForm:
             parent, 'Percentages shown as:',
             'Percent (63.4%)' if settings.percentage_format == 'percent' else 'Fraction (0.634)',
             ['Percent (63.4%)', 'Fraction (0.634)'])
+
+        #── Data ──────────────────────────────────────────────────────────────
+        _data_section(parent)
 
         #── About ─────────────────────────────────────────────────────────────
         _about_section(parent)

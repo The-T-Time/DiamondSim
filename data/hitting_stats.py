@@ -21,7 +21,7 @@ from data.api import (
     fetch_people_split_hitting_stats_raw,
     fetch_team_hitting_roster_raw,
 )
-from data.cache import load_json_cache, save_json_cache
+from data.cache_store import get_entry, set_entry
 from data.exceptions import DataFetchError
 from models.hitting_stats import RawHitterRecord, SeasonHittingLine
 from utils.logger import get_logger
@@ -125,14 +125,20 @@ def _lines_by_id(payload: dict) -> dict[int, SeasonHittingLine]:
 
 
 #------------------------------------------------------------------------------
-#Disk cache — short TTL, one entry per team+season+as-of-date. Uses
-#data/cache.py's generic load_json_cache/save_json_cache (shared with
-#data/player_stats.py and data/roster.py) rather than a local copy of the
-#same read/write/expiry/corruption-handling logic.
+#Disk cache — short TTL, one entry per team+season+as-of-date. Split
+#across two unified stores (data/cache_store.py): season/last-30/career
+#hitting lines live in cache/batting_stats.json, and the vs-LHP/vs-RHP
+#platoon splits (used only for lineup selection, not the overall rating)
+#live in cache/lineups.json — so each data type still ends up in the file
+#its name promises, even though both come from the same bundled fetch.
 #------------------------------------------------------------------------------
 
+_BATTING_STORE = 'batting_stats'
+_LINEUPS_STORE = 'lineups'
+
+
 def _cache_key(team_id: int, season: int, as_of_date: str) -> str:
-    return f"mlb_hitting_cache_{team_id}_{season}_{as_of_date}"
+    return f"{team_id}:{season}:{as_of_date}"
 
 
 #------------------------------------------------------------------------------
@@ -158,13 +164,14 @@ def fetch_team_hitters(team_id: int, season: int, as_of_date: str) -> list[RawHi
     an entire simulation run.
     """
     cache_key = _cache_key(team_id, season, as_of_date)
-    cached = load_json_cache(cache_key, ROSTER_CACHE_EXPIRY_SECONDS)
-    if cached is not None:
-        roster_payload  = cached['roster']
-        last30_payload  = cached['last30']
-        career_payload  = cached['career']
-        vs_lhp_payload  = cached.get('vs_lhp', {'people': []})
-        vs_rhp_payload  = cached.get('vs_rhp', {'people': []})
+    batting_cached = get_entry(_BATTING_STORE, cache_key, ROSTER_CACHE_EXPIRY_SECONDS)
+    lineups_cached = get_entry(_LINEUPS_STORE, cache_key, ROSTER_CACHE_EXPIRY_SECONDS)
+    if batting_cached is not None and lineups_cached is not None:
+        roster_payload  = batting_cached['roster']
+        last30_payload  = batting_cached['last30']
+        career_payload  = batting_cached['career']
+        vs_lhp_payload  = lineups_cached.get('vs_lhp', {'people': []})
+        vs_rhp_payload  = lineups_cached.get('vs_rhp', {'people': []})
     else:
         roster_payload = fetch_team_hitting_roster_raw(team_id, season)
         entries = roster_payload.get('roster')
@@ -191,12 +198,13 @@ def fetch_team_hitters(team_id: int, season: int, as_of_date: str) -> list[RawHi
             fetch_people_split_hitting_stats_raw(hitter_ids, season, 'vr') if hitter_ids else {'people': []}
         )
 
-        save_json_cache(
-            cache_key,
-            {
-                'roster': roster_payload, 'last30': last30_payload, 'career': career_payload,
-                'vs_lhp': vs_lhp_payload, 'vs_rhp': vs_rhp_payload,
-            },
+        set_entry(
+            _BATTING_STORE, cache_key,
+            {'roster': roster_payload, 'last30': last30_payload, 'career': career_payload},
+        )
+        set_entry(
+            _LINEUPS_STORE, cache_key,
+            {'vs_lhp': vs_lhp_payload, 'vs_rhp': vs_rhp_payload},
         )
 
     entries = roster_payload.get('roster', [])

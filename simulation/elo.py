@@ -13,6 +13,7 @@ import math as _math
 
 from data.teams import ALL_TEAMS, TEAM_ID_MAP
 from data.api import fetch_schedule
+from data.cache_store import get_prior_closing_elo, save_prior_closing_elo
 from models.simulation_config import SimulationConfig
 from models.team import TeamName
 from utils.logger import get_logger
@@ -73,7 +74,19 @@ def compute_regressed_starting_elo(
 def calculate_prior_season_closing_elo(
     prior_season: int, cfg: SimulationConfig = SimulationConfig()
 ) -> EloTable:
-    """Simulates the entire prior season chronologically to get authentic ending Elos."""
+    """
+    Simulates the entire prior season chronologically to get authentic
+    ending Elos. A completed season's closing Elo never changes once
+    computed, so this is cached indefinitely in cache/team_elo.json
+    (keyed by season + the Elo-affecting cfg fields) — a fresh
+    from-scratch replay only ever happens once per season/model
+    combination, not on every single run.
+    """
+    cached = get_prior_closing_elo(prior_season, cfg)
+    if cached is not None:
+        logger.debug("Using cached %d closing Elo baseline.", prior_season)
+        return cached
+
     logger.info("Calculating Elo baseline from %d season history...", prior_season)
     schedule_data = fetch_schedule(prior_season)
     historical_elo: EloTable = {team: cfg.elo_baseline for team in ALL_TEAMS}
@@ -105,4 +118,5 @@ def calculate_prior_season_closing_elo(
                 cfg,
             )
 
+    save_prior_closing_elo(prior_season, cfg, historical_elo)
     return historical_elo

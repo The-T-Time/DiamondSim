@@ -2,6 +2,16 @@
 
 All notable changes to DiamondSim are documented in this file.
 
+## [1.0.1]
+
+### Data caching
+- Replaced the old one-file-per-team cache with a single unified, per-data-type cache under `cache/` (`games.json`, `schedule.json`, `standings.json`, `team_elo.json`, `batting_stats.json`, `pitching_stats.json`, `lineups.json`, `rosters.json`, `injuries.json`, `metadata.json`), instead of one JSON file per team per fetch.
+- Game/schedule data now syncs incrementally: on every run, DiamondSim only requests dates it hasn't already cached, merges the results into the existing cache, and skips the API entirely if the cache is already current for the day.
+- Completed prior seasons' closing Elo ratings are now cached indefinitely — previously recalculated from a full season replay on every single run.
+- Backtests against an already-synced historical season no longer make any API calls; the played/unplayed snapshot for any date is re-derived locally from cached games.
+- Automatic detection of a new MLB season starting a fresh cache, with a manual **Refresh Data** option (Settings → Data) to rebuild everything from scratch.
+- Fixed a bug (introduced during 1.0.1 development) where concurrent roster/stat fetches for different teams could corrupt a shared cache file or fail with a file-in-use error; all cache writes are now synchronized and use unique temp files.
+
 ## [1.0.0]
 
 Initial public release.
