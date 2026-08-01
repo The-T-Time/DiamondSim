@@ -28,7 +28,21 @@ For a full explanation of how the simulation actually works (Elo, player ratings
 
 ## Screenshots
 
-*Coming soon.*
+| Launcher | Dashboard |
+|---|---|
+| ![Launcher — choose Simulate, Backtest, Load a saved run, or Settings](assets/screenshots/launcher.png) | ![Dashboard — World Series favorites and run summary](assets/screenshots/dashboard.png) |
+
+| Graphs | Standings |
+|---|---|
+| ![Graphs — sortable bar chart of playoff odds for all 30 teams](assets/screenshots/graphs.png) | ![Standings — division tables plus the Wild Card race](assets/screenshots/standings.png) |
+
+| Statistics | Teams |
+|---|---|
+| ![Statistics — Power Rankings, Run Differential, Splits, and Momentum](assets/screenshots/statistics.png) | ![Teams — a team's full game log with Elo before/after each game](assets/screenshots/teams.png) |
+
+| Players | Playoff Bracket |
+|---|---|
+| ![Players — sortable pitcher/hitter leaderboards with real MLB stats](assets/screenshots/players.png) | ![Playoff Bracket — the most common exact postseason bracket across every simulation](assets/screenshots/bracket.png) |
 
 ---
 

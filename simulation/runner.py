@@ -10,10 +10,12 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Callable
 
 from models.simulation_config import SimulationConfig
 from models.simulation_result import SimulationResult
+from simulation.exceptions import SimulationCancelled
 from simulation.simulator import (
     fetch_simulation_data,
     fetch_backtest_data,
@@ -41,13 +43,16 @@ class SimulationRunner:
         season: int,
         cfg: SimulationConfig = SimulationConfig(),
         progress_callback: Callable[[int, int], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> SimulationResult:
         """Forward-project the current season from today's live standings."""
         logger.info("=== SIMULATE MODE: %d season, %s sims ===",
                     season, f"{cfg.simulations:,}")
         data = fetch_simulation_data(season, cfg)
+        if cancel_event is not None and cancel_event.is_set():
+            raise SimulationCancelled()
         return run_simulation_core(data, season=season, mode='simulate', cfg=cfg,
-                                   progress_callback=progress_callback)
+                                   progress_callback=progress_callback, cancel_event=cancel_event)
 
     def run_backtest(
         self,
@@ -55,11 +60,14 @@ class SimulationRunner:
         snapshot_date: str,
         cfg: SimulationConfig = SimulationConfig(),
         progress_callback: Callable[[int, int], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> SimulationResult:
         """Test prediction accuracy at a historical mid-season snapshot date."""
         logger.info("=== BACKTEST: %d, snapshot %s, %s sims ===",
                     season, snapshot_date, f"{cfg.simulations:,}")
         data = fetch_backtest_data(season, snapshot_date, cfg)
+        if cancel_event is not None and cancel_event.is_set():
+            raise SimulationCancelled()
         return run_simulation_core(data, season=season, mode='backtest',
                                     snapshot_date=snapshot_date, cfg=cfg,
-                                    progress_callback=progress_callback)
+                                    progress_callback=progress_callback, cancel_event=cancel_event)

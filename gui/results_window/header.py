@@ -16,7 +16,7 @@ import customtkinter as ctk
 
 from config import APP_NAME
 from models.simulation_result import SimulationResult
-from gui.widgets import C_GRAY, C_GREEN, C_HEADER_BAR, C_HEADER_TEXT, FONT_HEADER, FONT_SMALL, FONT_SMALL_BOLD
+from gui.widgets import C_GRAY, C_GREEN, C_GREEN_HOVER, C_HEADER_BAR, C_HEADER_TEXT, FONT_HEADER, FONT_SMALL, FONT_SMALL_BOLD
 
 
 def window_title(result: SimulationResult) -> str:
@@ -36,7 +36,7 @@ def build_header(parent: tk.Widget, result: SimulationResult, on_save: Callable[
     ctk.CTkLabel(hdr, text=title, fg_color=C_HEADER_BAR, text_color=C_HEADER_TEXT,
                 font=FONT_HEADER).pack(side='left', padx=14, pady=6)
     ctk.CTkButton(hdr, text='💾  Save run', font=FONT_SMALL_BOLD,
-                 fg_color=C_GREEN, text_color=C_HEADER_TEXT, hover_color='#2ecc71',
+                 fg_color=C_GREEN, text_color=C_HEADER_TEXT, hover_color=C_GREEN_HOVER,
                  cursor='hand2', width=130,
                  command=on_save).pack(side='right', padx=14, pady=6)
 

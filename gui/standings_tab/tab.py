@@ -69,6 +69,7 @@ class StandingsTab(ctk.CTkFrame):
         self._simulated    = False            #False = Current, True = Simulated (projected)
         self._game_results = team_game_results(result.played_games)
         self._picture      = compute_playoff_picture(result)
+        self._resize_after_id: str | None = None
         self._build()
 
     #── chrome ────────────────────────────────────────────────────────────────
@@ -154,6 +155,16 @@ class StandingsTab(ctk.CTkFrame):
             '<Control-c>', lambda e: self._copy_standings()))
         self.bind('<Unmap>', lambda _: self._try_unbind('<Control-c>'))
 
+        #The Divisions view's panel-per-row count is computed from the
+        #window's current width (see _render_league) — without this, it's
+        #only ever right for whatever size the window happened to be at
+        #first render, and dragging the window wider/narrower afterward
+        #leaves the same panel count locked in rather than reflowing.
+        #Debounced the same way gui/graph_tab/tab.py debounces its own
+        #resize handler: a live window drag fires many Configure events a
+        #second, and only the size it settles on actually matters.
+        self.bind('<Configure>', self._on_resize)
+
         self._render()
 
     def _try_unbind(self, seq: str) -> None:
@@ -161,6 +172,21 @@ class StandingsTab(ctk.CTkFrame):
             self.winfo_toplevel().unbind(seq)
         except Exception:
             pass
+
+    def _on_resize(self, _event: tk.Event) -> None:
+        #Table view's Treeview already fills its space responsively via
+        #pack(fill='both', expand=True) — only Divisions needs an actual
+        #re-layout, so skip the (comparatively expensive) full re-render
+        #unless that's the active view.
+        if self._view != 'divisions':
+            return
+        if self._resize_after_id:
+            self.after_cancel(self._resize_after_id)
+        self._resize_after_id = self.after(200, self._apply_resize)
+
+    def _apply_resize(self) -> None:
+        self._resize_after_id = None
+        self._render()
 
     #── league toggle ─────────────────────────────────────────────────────────
 
@@ -299,10 +325,23 @@ class StandingsTab(ctk.CTkFrame):
         #(the CTkScrollableFrame just created above) hasn't had a geometry
         #pass yet at this point in construction and reports an unreliable
         #near-zero width, whereas the toplevel already has its real size
-        #from the explicit .geometry() call made when the window opened.
+        #from the explicit .geometry() call made when the window opened
+        #(see gui/results_window/window.py's update_idletasks() call,
+        #which is what makes that value trustworthy immediately rather
+        #than only after the window's first real event-loop pass).
         #-40 gives a little room for the scrollable frame's own scrollbar
         #and outer padding.
-        avail_w = self.winfo_toplevel().winfo_width() - 40
+        #
+        #Floored at the window's own configured minsize rather than 0:
+        #if winfo_width() is ever still unreliable (e.g. this tab gets
+        #reused somewhere without that update_idletasks() call), a
+        #near-zero width used to silently collapse every division onto
+        #its own row instead of the intended side-by-side layout —
+        #falling back to the window's guaranteed-minimum width keeps that
+        #from happening even if the real width can't be read yet.
+        toplevel = self.winfo_toplevel()
+        min_w, _min_h = toplevel.wm_minsize()
+        avail_w = max(toplevel.winfo_width(), min_w) - 40
         per_row = max(1, min(len(divs), avail_w // (panel_w + 16))) if panel_w else len(divs)
 
         for i, div in enumerate(divs):

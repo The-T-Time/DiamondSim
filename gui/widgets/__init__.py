@@ -10,8 +10,8 @@
 
 from gui.widgets.colors import (
     C_BG, C_DARK, C_MID, C_PANEL, C_HDR, C_WHITE, C_ROW_ALT, C_SELECTED,
-    C_HOVER, C_SASH, C_GREEN, C_BLUE, C_BLUE_DARK, C_GREEN_DARK, C_RED,
-    C_ORANGE, C_GOLD, C_GRAY, C_LIGHT_GRAY, C_DIV_LEAD, C_WC_IN,
+    C_HOVER, C_SASH, C_GREEN, C_GREEN_HOVER, C_BLUE, C_BLUE_DARK, C_GREEN_DARK, C_RED,
+    C_RED_HOVER, C_ORANGE, C_ORANGE_DARK, C_GOLD, C_GRAY, C_LIGHT_GRAY, C_DIV_LEAD, C_WC_IN,
     C_WIN_HDR, C_LOSS_HDR, C_HEADER_BAR, C_HEADER_TEXT,
 )
 from gui.widgets.fonts import (
@@ -34,8 +34,8 @@ from gui.widgets.tooltip import add_tooltip
 __all__ = [
     #colors
     'C_BG', 'C_DARK', 'C_MID', 'C_PANEL', 'C_HDR', 'C_WHITE', 'C_ROW_ALT',
-    'C_SELECTED', 'C_HOVER', 'C_SASH', 'C_GREEN', 'C_BLUE', 'C_BLUE_DARK',
-    'C_GREEN_DARK', 'C_RED', 'C_ORANGE', 'C_GOLD', 'C_GRAY', 'C_LIGHT_GRAY',
+    'C_SELECTED', 'C_HOVER', 'C_SASH', 'C_GREEN', 'C_GREEN_HOVER', 'C_BLUE', 'C_BLUE_DARK',
+    'C_GREEN_DARK', 'C_RED', 'C_RED_HOVER', 'C_ORANGE', 'C_ORANGE_DARK', 'C_GOLD', 'C_GRAY', 'C_LIGHT_GRAY',
     'C_DIV_LEAD', 'C_WC_IN', 'C_WIN_HDR', 'C_LOSS_HDR', 'C_HEADER_BAR', 'C_HEADER_TEXT',
     #fonts
     'FONT_TINY', 'FONT_TINY_BOLD', 'FONT_SMALL', 'FONT_SMALL_BOLD',

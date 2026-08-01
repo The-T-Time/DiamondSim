@@ -2,6 +2,22 @@
 
 All notable changes to DiamondSim are documented in this file.
 
+## [1.0.2]
+
+### Fixed
+- **Critical:** the incremental data cache introduced in 1.0.1 was clamping its schedule fetch to today's date, so the not-yet-played portion of the season (the vast majority of a mid-season sync) was never actually retrieved. Simulations ran with an almost-empty remaining schedule, making several teams' playoff odds look artificially fixed at 100% regardless of seed. Fixed — the fetch window now always reaches the season's real end date.
+- Settings' "Reset to Default" button raised a `NameError` on click (`reset_to_default` was called but never imported).
+- The Simulate screen's Cancel button referenced an undefined color constant, which would have crashed the screen on open.
+- The Load-a-run screen's list used unstyled system-default colors and an unthemed scrollbar regardless of the app's light/dark theme.
+- Settings' "Refresh Data" button flashed dark navy on hover instead of a matching orange shade; the results window's "Save run" button used a hardcoded hex color instead of the shared palette.
+- The Standings tab's division panels only laid out correctly once (right after the results window opened); resizing the window afterward left the same panel-per-row count locked in instead of reflowing.
+- Charts on the Graphs tab could render far larger than their panel on a scaled ("HiDPI"/125%+) display. The chart was sized in inches using matplotlib's own fixed default DPI, which has nothing to do with the display scaling CustomTkinter applies — the two disagreed on how many real pixels an "inch" was, so the rendered chart didn't match the space actually available. Fixed by sizing off Tk's own real DPI instead.
+
+### Added
+- A **Cancel** button for in-progress simulation/backtest runs, replacing the inline Back button in the run screen's action row. The Back button now lives in a persistent top-left position on every screen instead.
+- Cancelling a run stops it promptly: checked continuously during the Monte Carlo loop (including across worker processes) and before/after the roster & stat fetch phase.
+- `assets/logos/README.md` now lists every team's MLB id alongside its name and division, for anyone dropping in logo PNGs.
+
 ## [1.0.1]
 
 ### Data caching

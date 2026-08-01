@@ -48,11 +48,14 @@ else:
 
 #── accent colors: identical in both themes ──────────────────────────────────
 C_GREEN       = '#27ae60'
+C_GREEN_HOVER = '#2ecc71'   #brighter hover shade for solid-green buttons (e.g. Save run)
 C_BLUE        = '#2980b9'
 C_BLUE_DARK   = '#1a5276'   #AL division title bars
 C_GREEN_DARK  = '#145a32'   #NL division title bars
 C_RED         = '#c0392b'
+C_RED_HOVER   = '#f5b7b1'   #pale red hover tint for bordered/transparent destructive buttons (e.g. Cancel)
 C_ORANGE      = '#e67e22'
+C_ORANGE_DARK = '#af6023'   #hover shade for solid-orange buttons (e.g. Settings' Refresh Data)
 C_GOLD        = '#d4ac0d'
 
 C_WIN_HDR     = C_GREEN     #WIN header in game popup

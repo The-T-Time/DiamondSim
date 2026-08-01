@@ -15,8 +15,9 @@ import dataclasses
 import multiprocessing
 import os
 import random
+import threading
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from datetime import date
 from typing import Any, Callable
 
@@ -34,6 +35,7 @@ from models.simulation_config import SimulationConfig
 from models.simulation_result import SimulationResult
 from models.team import TeamName
 from simulation.elo import EloTable, apply_elo_update, compute_regressed_starting_elo
+from simulation.exceptions import SimulationCancelled
 from simulation.monte_carlo_worker import ChunkResult, merge_chunk_results, run_chunk
 from simulation.offense_calculator import build_all_team_lineups
 from simulation.pitching import build_all_team_staffs
@@ -217,18 +219,27 @@ def _run_all_chunks(
     cfg: SimulationConfig,
     rotations, bullpens, lineups,
     progress_callback: Callable[[int, int], None] | None,
+    cancel_event: threading.Event | None = None,
 ) -> ChunkResult:
+    if cancel_event is not None and cancel_event.is_set():
+        raise SimulationCancelled()
+
     worker_count = min(os.cpu_count() or 1, num_sims)
     if worker_count <= 1 or num_sims < _PARALLEL_MIN_SIMS:
         #Small run, or nothing to parallelize across — run it as a single
         #chunk in-process, with the same per-1%-of-run progress
-        #granularity run_simulation_core used to report directly.
+        #granularity run_simulation_core used to report directly. Same
+        #process as the caller, so cancel_event can be checked directly
+        #inside run_chunk's loop (see monte_carlo_worker.py).
         logger.info("Running %d simulations sequentially (single process).", num_sims)
-        return run_chunk(
+        result = run_chunk(
             num_sims, seed, base_rec, base_h2h, derived_base_elo, unplayed_games, cfg,
             rotations=rotations, bullpens=bullpens, lineups=lineups,
-            progress_callback=progress_callback,
+            progress_callback=progress_callback, cancel_event=cancel_event,
         )
+        if cancel_event is not None and cancel_event.is_set():
+            raise SimulationCancelled()
+        return result
 
     chunk_sizes = _split_evenly(num_sims, worker_count)
     logger.info("Running %d simulations across %d worker processes (chunks: %s).",
@@ -242,7 +253,8 @@ def _run_all_chunks(
     #starts each worker as a clean fresh interpreter instead, at the cost of a
     #small one-time per-worker startup delay
     mp_context = multiprocessing.get_context('spawn')
-    with ProcessPoolExecutor(max_workers=worker_count, mp_context=mp_context) as pool:
+    pool = ProcessPoolExecutor(max_workers=worker_count, mp_context=mp_context)
+    try:
         futures = {
             pool.submit(
                 run_chunk, chunk_size, seed + i, base_rec, base_h2h, derived_base_elo,
@@ -251,15 +263,37 @@ def _run_all_chunks(
                 #(workers can't touch the caller's GUI/closures), so progress
                 #is reported per-chunk-completed from the main process below
                 #instead of per-1%-of-the-whole-run. Coarser, but still live.
+                #cancel_event is likewise never passed: a threading.Event
+                #created in this (the main) process has no meaning inside a
+                #separate spawned process, so cancellation for this path is
+                #handled by polling below instead, between chunk completions.
                 None,
             ): chunk_size
             for i, chunk_size in enumerate(chunk_sizes)
         }
-        for future in as_completed(futures):
-            results.append(future.result())
-            completed += futures[future]
-            if progress_callback is not None:
-                progress_callback(completed, num_sims)
+        pending = set(futures)
+        while pending:
+            #A short wait() timeout (rather than a plain as_completed()
+            #loop) is what makes Cancel feel responsive even while every
+            #worker is mid-chunk — without it, cancellation would only be
+            #noticed whenever the next chunk happened to finish, which
+            #could be the entire run.
+            if cancel_event is not None and cancel_event.is_set():
+                raise SimulationCancelled()
+            done, pending = wait(pending, timeout=0.2, return_when=FIRST_COMPLETED)
+            for future in done:
+                results.append(future.result())
+                completed += futures[future]
+                if progress_callback is not None:
+                    progress_callback(completed, num_sims)
+    finally:
+        #cancel_futures=True drops any chunk that hasn't started yet;
+        #wait=False so a cancellation doesn't block here waiting for
+        #chunks that are already mid-flight — they finish on their own in
+        #the background and their (now-orphaned) results are simply never
+        #collected, the same "abandoned but harmless" pattern already
+        #used when the user navigates away from an in-flight run.
+        pool.shutdown(wait=False, cancel_futures=True)
 
     if progress_callback is not None:
         progress_callback(num_sims, num_sims)
@@ -278,6 +312,7 @@ def run_simulation_core(
     cfg: SimulationConfig = SimulationConfig(),
     snapshot_date: str | None = None,
     progress_callback: Callable[[int, int], None] | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> SimulationResult:
     """
     Runs cfg.simulations Monte Carlo simulations given a data payload.
@@ -287,7 +322,15 @@ def run_simulation_core(
     total) roughly every 1% of the run (and once at the end). It must be
     cheap and thread-safe from the caller's side — the engine never touches
     any GUI object itself.
+
+    cancel_event, if given and already set (or set while this is running),
+    raises SimulationCancelled instead of returning a result — checked
+    before the (potentially slow) roster/stat fetch for real postseason
+    features, and continuously during the Monte Carlo run itself.
     """
+    if cancel_event is not None and cancel_event.is_set():
+        raise SimulationCancelled()
+
     live_standings: Standings   = data['live_standings']
     derived_base_elo: EloTable  = data['derived_base_elo']
     played_games: list[Game]    = data['played_games']
@@ -306,6 +349,9 @@ def run_simulation_core(
     logger.info("Random seed            : %d", seed)
 
     base_rec, base_h2h = build_base_records(played_games, live_standings)
+
+    if cancel_event is not None and cancel_event.is_set():
+        raise SimulationCancelled()
 
     #Pitching staffs, built once from each team's starting
     #Elo and real roster/stats data (real rosters don't
@@ -332,7 +378,7 @@ def run_simulation_core(
 
     merged = _run_all_chunks(
         num_sims, seed, base_rec, base_h2h, derived_base_elo, unplayed_games, cfg,
-        rotations, bullpens, lineups, progress_callback,
+        rotations, bullpens, lineups, progress_callback, cancel_event,
     )
 
     playoff_odds = {t: merged.playoff_counts[t] / num_sims * 100 for t in ALL_TEAMS}

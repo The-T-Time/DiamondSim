@@ -220,11 +220,44 @@ class TestSyncSeasonGames(CacheStoreTestCase):
                 mock_date.today.return_value.isoformat.return_value = '2026-04-02'
                 played, unplayed = cache_store.sync_season_games(2026)
 
-            #second call should start from the prior watermark, not the season start
+            #second call should start from the prior watermark, not the season start —
+            #and must still run through the season's real end date, not just today
+            #(see test_unplayed_games_are_never_truncated_to_today below for why)
             self.assertEqual(mock_fetch.call_args[0][0], '2026-04-01')
-            self.assertEqual(mock_fetch.call_args[0][1], '2026-04-02')
+            self.assertEqual(mock_fetch.call_args[0][1], '2026-09-27')
             #both the previously-cached and newly-fetched games should be present
             self.assertEqual({g.game_pk for g in played}, {1, 2})
+
+    def test_fetch_window_always_reaches_season_end_not_just_today(self) -> None:
+        """
+        Regression test: the fetch window used to be clamped to
+        min(end_date, today), which meant every future/not-yet-played
+        game — the vast majority of a mid-season sync — was silently
+        never fetched at all. sync_season_games must always ask through
+        the season's real end date so the unplayed portion of the
+        schedule actually comes back, no matter how early in the season
+        'today' is.
+        """
+        with patch.object(cache_store, 'fetch_schedule_range') as mock_fetch, \
+             patch('data.api.parse_schedule_into_games') as mock_parse:
+            mock_fetch.return_value = {}
+            mock_parse.return_value = (
+                [Game(game_pk=1, date='2026-04-01', home=_HOME, away=_AWAY,
+                      home_score=4, away_score=2, winner=_HOME)],
+                #a game scheduled deep in the future — this must come back as unplayed
+                [Game(game_pk=2, date='2026-09-15', home=_AWAY, away=_HOME)],
+            )
+            #"today" is early in the season — the old bug clamped the fetch
+            #window to this date, so the September game would never be requested
+            with patch('data.cache_store.date') as mock_date:
+                mock_date.today.return_value.isoformat.return_value = '2026-04-02'
+                played, unplayed = cache_store.sync_season_games(2026)
+
+            #the fetch must reach all the way to the season's end date, not today
+            self.assertEqual(mock_fetch.call_args[0][1], '2026-09-27')
+            self.assertEqual(len(played), 1)
+            self.assertEqual(len(unplayed), 1)
+            self.assertEqual(unplayed[0].date, '2026-09-15')
 
     def test_disabled_cache_always_fetches_fresh_and_skips_persistence(self) -> None:
         with patch('data.cache.CACHE_ENABLED', False), \

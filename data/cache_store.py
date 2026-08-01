@@ -434,18 +434,24 @@ def sync_season_games(season: int) -> tuple[list[Game], list[Game]]:
     API. This is the incremental heart of the cache:
 
       * First call for a season: nothing cached yet, fetch the whole
-        season's schedule once.
-      * Later calls the same day: the watermark already reaches today (or
-        the season's end, if it already ended) — no API call at all.
-      * Later calls on a new day: fetch only from the watermark forward
-        (re-including the watermark date itself, since a game live or
-        postponed at the last sync may have finalized since), merge the
-        results into what's already cached, and move the watermark
-        forward.
+        season's schedule once (through its actual end date, not just
+        through today — the not-yet-played remainder of the schedule is
+        exactly what a simulation needs, so it's never something to
+        "skip" fetching).
+      * Later calls the same day: the watermark already reaches today —
+        no API call at all.
+      * Later calls on a new day: fetch again from the watermark (not
+        season start) through the season's end — re-including the
+        watermark date itself, since a game live or postponed at the
+        last sync may have finalized since — merge the results into
+        what's already cached, and move the watermark to today.
 
-    Historical (completed) seasons stabilize permanently: once the
-    watermark reaches the season's end date, there is nothing left to
-    ever fetch again for that season.
+    The watermark only ever shrinks how far BACK a re-sync has to reach
+    (never re-walking already-settled early-season dates); the fetch
+    window's far end is always the season's real end date so the
+    unplayed portion of the schedule is always present. Once the
+    watermark reaches the season's end date, the season is permanently
+    settled — a completed historical season is never fetched again.
     """
     note_season_synced(season)
 
@@ -456,18 +462,21 @@ def sync_season_games(season: int) -> tuple[list[Game], list[Game]]:
 
     start_date, end_date = get_schedule_bounds(season)
     today = date.today().isoformat()
-    horizon = min(end_date, today) if end_date else today
 
     watermark = _get_sync_watermark(season)
     fetch_from = watermark if watermark else start_date
 
-    if watermark and watermark >= horizon:
-        logger.debug("Games cache for %d is already current through %s — skipping the API.",
-                     season, horizon)
+    already_synced_today = watermark is not None and watermark >= today
+    season_fully_settled = (
+        watermark is not None and end_date is not None and watermark >= end_date
+    )
+
+    if season_fully_settled or already_synced_today:
+        logger.debug("Games cache for %d is already current — skipping the API.", season)
     else:
-        logger.info("Syncing %d schedule from %s through %s...", season, fetch_from, horizon)
+        logger.info("Syncing %d schedule from %s through %s...", season, fetch_from, end_date)
         #network call outside the lock, same reasoning as get_schedule_bounds
-        schedule_data = fetch_schedule_range(fetch_from, horizon)
+        schedule_data = fetch_schedule_range(fetch_from, end_date)
         fresh_played, fresh_unplayed = _parse_and_split(schedule_data)
 
         def _mutate(games_store: dict) -> None:
@@ -477,7 +486,7 @@ def sync_season_games(season: int) -> tuple[list[Game], list[Game]]:
                 existing_by_key[_game_key(g)] = _to_dict(g)
             games_store[_season_key(season)] = {'games': existing_by_key}
         update_store('games', _mutate)
-        _set_sync_watermark(season, horizon)
+        _set_sync_watermark(season, today)
 
     existing_by_key = read_store('games').get(_season_key(season), {}).get('games', {})
     played = [g for g in (_from_dict(d) for d in existing_by_key.values()) if g.is_played]

@@ -16,7 +16,7 @@ import customtkinter as ctk
 
 from data.settings_store import load_settings
 from gui.launcher.constants import _MODELS
-from gui.widgets import FONT_NORMAL, FONT_NORMAL_BOLD
+from gui.widgets import C_RED, C_RED_HOVER, FONT_NORMAL, FONT_NORMAL_BOLD
 from models.app_settings import has_customized_model_weights
 
 _CHARS_TO_PX = 8   #rough per-character pixel width at FONT_NORMAL's size
@@ -56,16 +56,23 @@ def model_row(form: ctk.CTkFrame, row: int, width: int = 16) -> tk.StringVar:
 
 def action_row(parent: ctk.CTkFrame, label: str,
                run_cmd: Callable[[], None], btn_style: dict,
-               back_cmd: Callable[[], None]) -> tuple[ctk.CTkButton, ctk.CTkButton]:
+               cancel_cmd: Callable[[], None]) -> tuple[ctk.CTkButton, ctk.CTkButton]:
+    """Builds the [Run] [Cancel] pair shown under the Simulate/Backtest
+    form. Cancel starts disabled — there's nothing to cancel until a run
+    is actually in flight; run_action_with_progress enables it for the
+    run's duration and disables it again once the run finishes (or is
+    cancelled). Navigation itself now lives in a separate, always-visible
+    top-left Back button (see gui/launcher/app.py's _back_button)."""
     row = ctk.CTkFrame(parent, fg_color='transparent')
     row.pack(pady=12)
     run_btn = ctk.CTkButton(row, text=label, font=FONT_NORMAL_BOLD,
                            cursor='hand2', width=16 * _CHARS_TO_PX,
                            command=run_cmd, **btn_style)
     run_btn.pack(side='left', padx=8)
-    back_btn = ctk.CTkButton(row, text='← Back', font=FONT_NORMAL,
-                            cursor='hand2', width=10 * _CHARS_TO_PX,
-                            fg_color='transparent', text_color=('gray10', 'gray90'),
-                            border_width=1, command=back_cmd)
-    back_btn.pack(side='left', padx=8)
-    return run_btn, back_btn
+    cancel_btn = ctk.CTkButton(row, text='✕  Cancel', font=FONT_NORMAL,
+                              cursor='hand2', width=12 * _CHARS_TO_PX,
+                              fg_color='transparent', text_color=C_RED, border_width=1,
+                              border_color=C_RED, hover_color=C_RED_HOVER,
+                              state='disabled', command=cancel_cmd)
+    cancel_btn.pack(side='left', padx=8)
+    return run_btn, cancel_btn

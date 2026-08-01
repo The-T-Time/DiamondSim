@@ -11,12 +11,13 @@
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
 
 import customtkinter as ctk
 
 from config import APP_NAME, DEFAULT_SIMS, BACKTEST_SEASON_MAX, LAUNCHER_WINDOW_SIZE
 from data.results_store import list_saved_results, load_result, SavedResultError
+from data.settings_store import reset_to_default
 from models.simulation_config import SimulationConfig
 from simulation.runner import SimulationRunner
 from gui.launcher.constants import _BTN_SIM, _BTN_BACK, _BTN_LOAD, _BTN_SETTINGS
@@ -26,7 +27,8 @@ from gui.launcher.run_action import run_action_with_progress
 from gui.launcher.settings_screen import SettingsForm, save_from_form
 from gui.results_window import ResultsWindow
 from gui.widgets import (
-    C_BG, C_PANEL, FONT_SMALL, FONT_NORMAL, FONT_NORMAL_BOLD, FONT_MEDIUM_BOLD, FONT_HEADER,
+    C_DARK, C_HDR, C_PANEL, C_SELECTED, C_WHITE,
+    FONT_SMALL, FONT_NORMAL, FONT_NORMAL_BOLD, FONT_MEDIUM_BOLD, FONT_HEADER,
 )
 from utils.logger import get_logger
 
@@ -45,6 +47,21 @@ class LauncherApp:
         root.resizable(False, False)
         self._progress = ProgressIndicator(root)
         self._build_main()
+
+    #── shared widgets ────────────────────────────────────────────────────────
+
+    def _back_button(self, command) -> ctk.CTkButton:
+        """A small, consistently-placed top-left nav button, packed first
+        so it sits above/left of everything else on the screen rather
+        than competing with the Simulate/Backtest form's [Run] [Cancel]
+        row for space — that row is reserved for the action itself now,
+        with Cancel taking the slot Back used to occupy there."""
+        btn = ctk.CTkButton(self.root, text='← Back', font=FONT_NORMAL,
+                           cursor='hand2', width=10 * _CHARS_TO_PX, height=26,
+                           fg_color='transparent', text_color=('gray10', 'gray90'),
+                           border_width=1, command=command)
+        btn.pack(anchor='w', padx=10, pady=(10, 0))
+        return btn
 
     #── main menu ─────────────────────────────────────────────────────────────
 
@@ -88,6 +105,7 @@ class LauncherApp:
     def _open_simulate(self) -> None:
         self._clear()
         root = self.root
+        back_btn = self._back_button(self._build_main)
         ctk.CTkLabel(root, text='▶  Simulate Current Season', font=FONT_MEDIUM_BOLD).pack(pady=10)
 
         form = ctk.CTkFrame(root, fg_color='transparent')
@@ -110,18 +128,20 @@ class LauncherApp:
                 return
             cfg = SimulationConfig.by_name(model_var.get(), simulations=num_sims, random_seed=seed)
             run_action_with_progress(
-                self.root, run_btn, back_btn, 'Run Simulation',
-                lambda cb: _runner.run_simulate(season, cfg, progress_callback=cb),
-                self._progress,
+                self.root, run_btn, cancel_btn, 'Run Simulation',
+                lambda cb, cancel_event: _runner.run_simulate(
+                    season, cfg, progress_callback=cb, cancel_event=cancel_event),
+                self._progress, back_btn=back_btn,
             )
 
-        run_btn, back_btn = action_row(root, 'Run Simulation', run, _BTN_SIM, self._build_main)
+        run_btn, cancel_btn = action_row(root, 'Run Simulation', run, _BTN_SIM, lambda: None)
 
     #── backtest ──────────────────────────────────────────────────────────────
 
     def _open_backtest(self) -> None:
         self._clear()
         root = self.root
+        back_btn = self._back_button(self._build_main)
         ctk.CTkLabel(root, text='⏪  Backtest a Completed Season', font=FONT_MEDIUM_BOLD).pack(pady=10)
         ctk.CTkLabel(root,
                     text='Pick a past season and a mid-season snapshot date.\n'
@@ -154,18 +174,20 @@ class LauncherApp:
                 return
             cfg = SimulationConfig.by_name(model_var.get(), simulations=num_sims, random_seed=seed)
             run_action_with_progress(
-                self.root, run_btn, back_btn, 'Run Backtest',
-                lambda cb: _runner.run_backtest(season, snapshot_date, cfg, progress_callback=cb),
-                self._progress,
+                self.root, run_btn, cancel_btn, 'Run Backtest',
+                lambda cb, cancel_event: _runner.run_backtest(
+                    season, snapshot_date, cfg, progress_callback=cb, cancel_event=cancel_event),
+                self._progress, back_btn=back_btn,
             )
 
-        run_btn, back_btn = action_row(root, 'Run Backtest', run, _BTN_BACK, self._build_main)
+        run_btn, cancel_btn = action_row(root, 'Run Backtest', run, _BTN_BACK, lambda: None)
 
     #── load saved run ──────────────────────────────────────────────────────────
 
     def _open_load(self) -> None:
         self._clear()
         root = self.root
+        self._back_button(self._build_main)
         ctk.CTkLabel(root, text='📂  Load a Saved Run', font=FONT_MEDIUM_BOLD).pack(pady=10)
 
         saved = list_saved_results()
@@ -173,19 +195,27 @@ class LauncherApp:
             ctk.CTkLabel(root, text='No saved runs yet.\n\nRun a simulation and use\n'
                                     '“Save run” to keep one here.',
                         font=FONT_NORMAL, text_color='#555').pack(pady=12)
-            ctk.CTkButton(root, text='← Back', font=FONT_NORMAL,
-                         fg_color='transparent', text_color=('gray10', 'gray90'), border_width=1,
-                         cursor='hand2', width=10 * _CHARS_TO_PX,
-                         command=self._build_main).pack(pady=8)
             return
 
-        #tk.Listbox/tk.Scrollbar (no CTk equivalent) inside a CTkFrame —
-        #see this module's docstring.
+        #tk.Listbox (no CTk equivalent) inside a CTkFrame — see this
+        #module's docstring. Both it and its Scrollbar are colored
+        #explicitly (Listbox has no ttk/CTk styling hook at all, and an
+        #un-styled ttk.Scrollbar falls back to the platform's native
+        #chrome) so this doesn't look like a stray light-mode widget
+        #dropped into a themed window.
         list_frame = ctk.CTkFrame(root, fg_color=C_PANEL)
         list_frame.pack(fill='both', expand=True, padx=12, pady=6)
-        sb = tk.Scrollbar(list_frame, orient='vertical')
+
+        sb_style = 'DiamondSimLoad.Vertical.TScrollbar'
+        sty = ttk.Style()
+        sty.theme_use('clam')   #see gui/widgets/table.py — 'clam' is the one theme that reliably honors these color overrides across platforms
+        sty.configure(sb_style, background=C_HDR, troughcolor=C_PANEL,
+                     bordercolor=C_PANEL, arrowcolor=C_DARK, relief='flat')
+        sb = ttk.Scrollbar(list_frame, orient='vertical', style=sb_style)
         lb = tk.Listbox(list_frame, font=FONT_SMALL, activestyle='none',
-                        yscrollcommand=sb.set, height=8, relief='flat', borderwidth=0)
+                        yscrollcommand=sb.set, height=8, relief='flat', borderwidth=0,
+                        bg=C_WHITE, fg=C_DARK, highlightthickness=0,
+                        selectbackground=C_SELECTED, selectforeground=C_DARK)
         sb.config(command=lb.yview)
         sb.pack(side='right', fill='y')
         lb.pack(side='left', fill='both', expand=True, padx=4, pady=4)
@@ -212,10 +242,6 @@ class LauncherApp:
         ctk.CTkButton(row, text='Open', font=FONT_NORMAL_BOLD,
                      cursor='hand2', width=12 * _CHARS_TO_PX, command=do_load,
                      **_BTN_LOAD).pack(side='left', padx=8)
-        ctk.CTkButton(row, text='← Back', font=FONT_NORMAL,
-                     fg_color='transparent', text_color=('gray10', 'gray90'), border_width=1,
-                     cursor='hand2', width=10 * _CHARS_TO_PX,
-                     command=self._build_main).pack(side='left', padx=8)
         lb.bind('<Double-Button-1>', lambda _e: do_load())
 
     #── settings ──────────────────────────────────────────────────────────────
@@ -225,6 +251,7 @@ class LauncherApp:
         root = self.root
         root.geometry(_SETTINGS_WINDOW_SIZE)
 
+        self._back_button(self._build_main)
         ctk.CTkLabel(root, text='⚙  Settings', font=FONT_MEDIUM_BOLD).pack(pady=(10, 4))
 
         scroll = ctk.CTkScrollableFrame(root, fg_color=C_PANEL)
@@ -253,10 +280,6 @@ class LauncherApp:
                      cursor='hand2', width=16 * _CHARS_TO_PX,
                      fg_color='transparent', text_color=('gray10', 'gray90'),
                      border_width=1, command=do_reset).pack(side='left', padx=6)
-        ctk.CTkButton(btn_row, text='← Back', font=FONT_NORMAL,
-                     cursor='hand2', width=10 * _CHARS_TO_PX,
-                     fg_color='transparent', text_color=('gray10', 'gray90'),
-                     border_width=1, command=self._build_main).pack(side='left', padx=6)
 
     #── helpers ───────────────────────────────────────────────────────────────
 

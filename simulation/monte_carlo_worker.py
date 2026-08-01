@@ -53,13 +53,27 @@ def run_chunk(
     bullpens=None,
     lineups=None,
     progress_callback: Optional[Callable[[int, int], None]] = None,
+    cancel_event=None,
 ) -> ChunkResult:
+    """
+    `cancel_event`, if given, is checked at the same ~1%-of-the-chunk
+    cadence as progress reporting (cheap, and frequent enough to feel
+    responsive) — set it and this returns early with a partial
+    ChunkResult. Only meaningful for the single-process path (see
+    simulator.py's _run_all_chunks): a threading.Event created in the
+    main process can't be observed inside a separate worker process, so
+    the multi-process path never passes one here and instead polls for
+    cancellation between chunk completions in the caller.
+    """
     #a local Random instance, not the `random` module, so this chunk's draws never interfere with another chunk's (or the caller's) randomness — same reasoning run_simulation_core's own rng used to have
     rng = random.Random(seed)
     result = ChunkResult()
     report_every = max(1, num_chunk_sims // 100)
 
     for i in range(num_chunk_sims):
+        if cancel_event is not None and i % report_every == 0 and cancel_event.is_set():
+            break
+
         records: RecordTable = {
             t: {**v, 'league_results': list(v['league_results'])}
             for t, v in base_rec.items()

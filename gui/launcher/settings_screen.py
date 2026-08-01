@@ -20,7 +20,7 @@ from data.cache_store import refresh_all_data
 from data.settings_store import load_settings, reset_to_default, save_settings
 from models.app_settings import AppSettings
 from gui.widgets import (
-    C_DARK, C_GRAY, C_HEADER_BAR, C_HEADER_TEXT, C_ORANGE, C_PANEL, C_SASH,
+    C_DARK, C_GRAY, C_HEADER_BAR, C_HEADER_TEXT, C_ORANGE, C_ORANGE_DARK, C_PANEL, C_SASH,
     FONT_MEDIUM_BOLD, FONT_NORMAL, FONT_NORMAL_BOLD, FONT_SMALL, FONT_SMALL_BOLD,
     add_tooltip,
 )
@@ -185,7 +185,7 @@ def _data_section(parent: tk.Widget) -> None:
 
     ctk.CTkButton(
         parent, text='\U0001f504  Refresh Data', font=FONT_NORMAL_BOLD,
-        fg_color=C_ORANGE, hover_color=C_HEADER_BAR, command=_on_refresh,
+        fg_color=C_ORANGE, hover_color=C_ORANGE_DARK, command=_on_refresh,
     ).pack(anchor='w', padx=4, pady=(0, 10))
 
 
